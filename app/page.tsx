@@ -1,113 +1,173 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">app/page.tsx</code>
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:size-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{" "}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
+import { init, tx, id } from '@instantdb/react'
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { motion } from "framer-motion"
+
+const APP_ID = 'e5efacba-93ff-4ecc-a50f-f6f03f4a0276'
+
+type Schema = {
+    questions: Question
+}
+
+const db = init<Schema>({ appId: APP_ID })
+
+export default function Component() {
+    const { isLoading, error, data } = db.useQuery({ questions: {} })
+
+    if (isLoading) {
+        return <div className="flex items-center justify-center h-screen">Fetching data...</div>
+    }
+    if (error) {
+        return <div className="flex items-center justify-center h-screen">Error fetching data: {error.message}</div>
+    }
+
+    const { questions } = data
+    const leaderboard = aggregateLeaderboard(questions)
+
+    return (
+        <div className="min-h-screen bg-gray-50 p-8">
+            <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+                className="container mx-auto max-w-5xl"
+            >
+                <h1 className="text-5xl font-bold text-center text-gray-800 mb-12">Questions for my Demo</h1>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-8">
+                        <QuestionForm questions={questions} />
+                        <QuestionList questions={questions} />
+                    </div>
+                    <div className="space-y-8">
+                        <Leaderboard leaderboard={leaderboard} />
+                        <ActionBar questions={questions} />
+                    </div>
+                </div>
+                <footer className="text-center text-sm text-gray-500 mt-12">
+                    Ask as many unique questions as you can!
+                </footer>
+            </motion.div>
         </div>
-      </div>
+    )
+}
 
-      <div className="relative z-[-1] flex place-items-center before:absolute before:h-[300px] before:w-full before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-full after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700 before:dark:opacity-10 after:dark:from-sky-900 after:dark:via-[#0141ff] after:dark:opacity-40 sm:before:w-[480px] sm:after:w-[240px] before:lg:h-[360px]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
+function addQuestion(name: string, text: string) {
+    db.transact(
+        tx.questions[id()].update({
+            name,
+            text,
+            createdAt: Date.now(),
+        })
+    )
+}
 
-      <div className="mb-32 grid text-center lg:mb-0 lg:w-full lg:max-w-5xl lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Docs{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50">
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
+function QuestionForm({ questions }: { questions: Question[] }) {
+    return (
+        <Card className="overflow-hidden shadow-sm border border-gray-200">
+            <CardHeader className="bg-white border-b border-gray-100">
+                <CardTitle className="text-gray-800">Ask a Question</CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+                <form
+                    onSubmit={(e) => {
+                        e.preventDefault()
+                        const name = (e.target as HTMLFormElement).username.value
+                        const text = (e.target as HTMLFormElement).question.value
+                        if (name && text) {
+                            addQuestion(name, text)
+                            ;(e.target as HTMLFormElement).question.value = ''
+                        }
+                    }}
+                    className="space-y-4"
+                >
+                    <Input name="username" placeholder="Your Name" autoFocus className="border-gray-300 focus:border-blue-500 transition-colors duration-200" />
+                    <Input name="question" placeholder="Ask a question..." className="border-gray-300 focus:border-blue-500 transition-colors duration-200" />
+                    <Button type="submit" className="w-full text-white transition-colors duration-200">
+                        Submit
+                    </Button>
+                </form>
+            </CardContent>
+        </Card>
+    )
+}
 
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Learn{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50">
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
+function QuestionList({ questions }: { questions: Question[] }) {
+    return (
+        <Card className="overflow-hidden shadow-sm border border-gray-200">
+            <CardHeader className="bg-white border-b border-gray-100">
+                <CardTitle className="text-gray-800">Questions Asked</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+                <ScrollArea className="h-[300px]">
+                    {questions.map((question, index) => (
+                        <motion.div
+                            key={question.id}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: index * 0.05 }}
+                            className="p-4 border-b last:border-b-0 hover:bg-gray-50 transition-colors duration-200"
+                        >
+                            <strong className="text-blue-600">{question.name}:</strong> {question.text}
+                        </motion.div>
+                    ))}
+                </ScrollArea>
+            </CardContent>
+        </Card>
+    )
+}
 
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Templates{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50">
-            Explore starter templates for Next.js.
-          </p>
-        </a>
+function Leaderboard({ leaderboard }: { leaderboard: { name: string, count: number }[] }) {
+    return (
+        <Card className="overflow-hidden shadow-sm border border-gray-200">
+            <CardHeader className="bg-white border-b border-gray-100">
+                <CardTitle className="text-gray-800">Leaderboard</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+                <ScrollArea className="h-[300px]">
+                    {leaderboard.map((entry, index) => (
+                        <motion.div
+                            key={index}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: index * 0.05 }}
+                            className="p-4 border-b last:border-b-0 hover:bg-gray-50 transition-colors duration-200"
+                        >
+                            <span className="font-semibold text-blue-500">{index + 1}.</span> {entry.name} - {entry.count} question{entry.count !== 1 ? 's' : ''}
+                        </motion.div>
+                    ))}
+                </ScrollArea>
+            </CardContent>
+        </Card>
+    )
+}
 
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Deploy{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-balance text-sm opacity-50">
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
-    </main>
-  );
+function ActionBar({ questions }: { questions: Question[] }) {
+    return (
+        <Card className="overflow-hidden shadow-sm border border-gray-200">
+            <CardContent className="p-6 bg-white">
+                <div className="text-2xl font-bold text-gray-800">Total questions: {questions.length}</div>
+            </CardContent>
+        </Card>
+    )
+}
+
+function aggregateLeaderboard(questions: Question[]) {
+    const leaderboardMap: { [key: string]: number } = {}
+    questions.forEach((question) => {
+        leaderboardMap[question.name] = (leaderboardMap[question.name] || 0) + 1
+    })
+    return Object.entries(leaderboardMap)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count)
+}
+
+type Question = {
+    id: string
+    name: string
+    text: string
+    createdAt: number
 }
