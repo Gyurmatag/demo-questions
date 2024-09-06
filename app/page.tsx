@@ -69,7 +69,7 @@ function Login() {
                     }
                 }}
             >
-                <h2 className="text-lg font-bold">Let's log you in!</h2>
+                <h2 className="text-lg font-bold">Let us log you in!</h2>
                 <Input
                     placeholder="Enter your email"
                     type="email"
