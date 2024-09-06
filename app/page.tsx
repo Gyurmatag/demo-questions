@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { motion } from "framer-motion"
+import { Pencil, Trash2 } from 'lucide-react'
 
 const APP_ID = 'e5efacba-93ff-4ecc-a50f-f6f03f4a0276'
 
@@ -15,6 +16,7 @@ type Question = {
     email: string
     text: string
     createdAt: number
+    creatorId: string
 }
 
 type Schema = {
@@ -118,7 +120,7 @@ function Login() {
     )
 }
 
-function QuestionsApp({ user }: { user: { email: string } }) {
+function QuestionsApp({ user }: { user: { email: string, id: string } }) {
     const { isLoading, error, data } = db.useQuery({ questions: {} })
 
     if (isLoading) {
@@ -142,8 +144,8 @@ function QuestionsApp({ user }: { user: { email: string } }) {
                 <h1 className="text-5xl font-bold text-center text-gray-800 mb-12">Questions for my Demo</h1>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="space-y-8">
-                        <QuestionForm userEmail={user.email} questions={questions} />
-                        <QuestionList questions={questions} />
+                        <QuestionForm user={user} questions={questions} />
+                        <QuestionList questions={questions} currentUserId={user.id} />
                     </div>
                     <div className="space-y-8">
                         <Leaderboard leaderboard={leaderboard} />
@@ -158,17 +160,18 @@ function QuestionsApp({ user }: { user: { email: string } }) {
     )
 }
 
-function addQuestion(email: string, text: string) {
+function addQuestion(email: string, text: string, creatorId: string) {
     db.transact(
         tx.questions[id()].update({
             email,
             text,
             createdAt: Date.now(),
+            creatorId,
         })
     )
 }
 
-function QuestionForm({ userEmail, questions }: { userEmail: string, questions: Question[] }) {
+function QuestionForm({ user, questions }: { user: { email: string, id: string }, questions: Question[] }) {
     return (
         <Card className="overflow-hidden shadow-sm border border-gray-200">
             <CardHeader className="bg-white border-b border-gray-100">
@@ -180,7 +183,7 @@ function QuestionForm({ userEmail, questions }: { userEmail: string, questions: 
                         e.preventDefault()
                         const text = (e.target as HTMLFormElement).question.value
                         if (text) {
-                            addQuestion(userEmail, text);
+                            addQuestion(user.email, text, user.id);
                             (e.target as HTMLFormElement).question.value = ''
                         }
                     }}
@@ -188,7 +191,7 @@ function QuestionForm({ userEmail, questions }: { userEmail: string, questions: 
                 >
                     <Input
                         name="email"
-                        value={userEmail}
+                        value={user.email}
                         readOnly
                         className="border-gray-300 bg-gray-100 cursor-not-allowed"
                     />
@@ -202,7 +205,7 @@ function QuestionForm({ userEmail, questions }: { userEmail: string, questions: 
     )
 }
 
-function QuestionList({ questions }: { questions: Question[] }) {
+function QuestionList({ questions, currentUserId }: { questions: Question[], currentUserId: string }) {
     return (
         <Card className="overflow-hidden shadow-sm border border-gray-200">
             <CardHeader className="bg-white border-b border-gray-100">
@@ -219,11 +222,45 @@ function QuestionList({ questions }: { questions: Question[] }) {
                             className="p-4 border-b last:border-b-0 hover:bg-gray-50 transition-colors duration-200"
                         >
                             <strong className="text-blue-600">{question.email}:</strong> {question.text}
+                            {question.creatorId === currentUserId && (
+                                <div className="mt-2 space-x-2">
+                                    <Button
+                                        onClick={() => updateQuestion(question.id, prompt('Update question:', question.text) || question.text)}
+                                        size="sm"
+                                        variant="outline"
+                                    >
+                                        <Pencil className="w-4 h-4 mr-2" />
+                                        Edit
+                                    </Button>
+                                    <Button
+                                        onClick={() => deleteQuestion(question.id)}
+                                        size="sm"
+                                        variant="destructive"
+                                    >
+                                        <Trash2 className="w-4 h-4 mr-2" />
+                                        Delete
+                                    </Button>
+                                </div>
+                            )}
                         </motion.div>
                     ))}
                 </ScrollArea>
             </CardContent>
         </Card>
+    )
+}
+
+function updateQuestion(questionId: string, newText: string) {
+    db.transact(
+        tx.questions[questionId].update({
+            text: newText,
+        })
+    )
+}
+
+function deleteQuestion(questionId: string) {
+    db.transact(
+        tx.questions[questionId].delete()
     )
 }
 
