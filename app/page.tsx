@@ -1,6 +1,7 @@
 'use client'
 
 import { init, tx, id } from '@instantdb/react'
+import { useState } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,13 +10,115 @@ import { motion } from "framer-motion"
 
 const APP_ID = 'e5efacba-93ff-4ecc-a50f-f6f03f4a0276'
 
+type Question = {
+    id: string
+    email: string
+    text: string
+    createdAt: number
+}
+
 type Schema = {
     questions: Question
 }
 
 const db = init<Schema>({ appId: APP_ID })
 
-export default function Component() {
+export default function AuthenticatedApp() {
+    const { isLoading, user, error } = db.useAuth()
+
+    if (isLoading) {
+        return <div className="flex items-center justify-center h-screen">Loading...</div>
+    }
+
+    if (error) {
+        return <div className="flex items-center justify-center h-screen">Uh oh! {error.message}</div>
+    }
+
+    if (user) {
+        return <QuestionsApp user={user} />
+    }
+
+    return <Login />
+}
+
+function Login() {
+    const [state, setState] = useState({
+        sentEmail: '',
+        email: '',
+        error: null,
+        code: '',
+    })
+
+    const { sentEmail, email, code, error } = state
+
+    if (!sentEmail) {
+        return (
+            <form
+                className="flex max-w-xs mx-auto flex-col gap-3 items-center h-screen px-2 pt-12"
+                onSubmit={async (e) => {
+                    e.preventDefault()
+
+                    if (!email) return
+
+                    setState({ ...state, sentEmail: email, error: null })
+
+                    try {
+                        await db.auth.sendMagicCode({ email })
+                    } catch (error: any) {
+                        setState({ ...state, error: error.body?.message })
+                    }
+                }}
+            >
+                <h2 className="text-lg font-bold">Let's log you in!</h2>
+                <Input
+                    placeholder="Enter your email"
+                    type="email"
+                    value={email}
+                    onChange={(e) =>
+                        setState({ ...state, email: e.target.value, error: null })
+                    }
+                />
+                <Button type="submit" className="w-full">
+                    Send Code
+                </Button>
+                {error ? <p className="text-red-700 text-sm bg-red-50 border-red-500 border p-2">{error}</p> : null}
+            </form>
+        )
+    }
+
+    return (
+        <form
+            className="flex max-w-xs mx-auto flex-col gap-3 items-center h-screen px-2 pt-12"
+            onSubmit={async (e) => {
+                e.preventDefault()
+
+                if (!code) return
+
+                try {
+                    await db.auth.signInWithMagicCode({ email: sentEmail, code })
+                } catch (error: any) {
+                    setState({ ...state, error: error.body?.message })
+                }
+            }}
+        >
+            <h2 className="text-lg font-bold">
+                Okay we sent you an email! What was the code?
+            </h2>
+            <Input
+                type="text"
+                placeholder="Magic code"
+                value={code || ''}
+                onChange={(e) =>
+                    setState({ ...state, code: e.target.value, error: null })
+                }
+            />
+            <Button type="submit" className="w-full">Verify</Button>
+            {error ? <p className="text-red-700 text-sm bg-red-50 border-red-500 border p-2">{error}</p> : null}
+        </form>
+    )
+}
+
+function QuestionsApp({ user }: { user: { email: string } }) {
     const { isLoading, error, data } = db.useQuery({ questions: {} })
 
     if (isLoading) {
@@ -39,7 +142,7 @@ export default function Component() {
                 <h1 className="text-5xl font-bold text-center text-gray-800 mb-12">Questions for my Demo</h1>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="space-y-8">
-                        <QuestionForm questions={questions} />
+                        <QuestionForm userEmail={user.email} questions={questions} />
                         <QuestionList questions={questions} />
                     </div>
                     <div className="space-y-8">
@@ -55,17 +158,17 @@ export default function Component() {
     )
 }
 
-function addQuestion(name: string, text: string) {
+function addQuestion(email: string, text: string) {
     db.transact(
         tx.questions[id()].update({
-            name,
+            email,
             text,
             createdAt: Date.now(),
         })
     )
 }
 
-function QuestionForm({ questions }: { questions: Question[] }) {
+function QuestionForm({ userEmail, questions }: { userEmail: string, questions: Question[] }) {
     return (
         <Card className="overflow-hidden shadow-sm border border-gray-200">
             <CardHeader className="bg-white border-b border-gray-100">
@@ -75,16 +178,20 @@ function QuestionForm({ questions }: { questions: Question[] }) {
                 <form
                     onSubmit={(e) => {
                         e.preventDefault()
-                        const name = (e.target as HTMLFormElement).username.value
                         const text = (e.target as HTMLFormElement).question.value
-                        if (name && text) {
-                            addQuestion(name, text)
-                            ;(e.target as HTMLFormElement).question.value = ''
+                        if (text) {
+                            addQuestion(userEmail, text);
+                            (e.target as HTMLFormElement).question.value = ''
                         }
                     }}
                     className="space-y-4"
                 >
-                    <Input name="username" placeholder="Your Name" autoFocus className="border-gray-300 focus:border-blue-500 transition-colors duration-200" />
+                    <Input
+                        name="email"
+                        value={userEmail}
+                        readOnly
+                        className="border-gray-300 bg-gray-100 cursor-not-allowed"
+                    />
                     <Input name="question" placeholder="Ask a question..." className="border-gray-300 focus:border-blue-500 transition-colors duration-200" />
                     <Button type="submit" className="w-full text-white transition-colors duration-200">
                         Submit
@@ -111,7 +218,7 @@ function QuestionList({ questions }: { questions: Question[] }) {
                             transition={{ delay: index * 0.05 }}
                             className="p-4 border-b last:border-b-0 hover:bg-gray-50 transition-colors duration-200"
                         >
-                            <strong className="text-blue-600">{question.name}:</strong> {question.text}
+                            <strong className="text-blue-600">{question.email}:</strong> {question.text}
                         </motion.div>
                     ))}
                 </ScrollArea>
@@ -120,7 +227,7 @@ function QuestionList({ questions }: { questions: Question[] }) {
     )
 }
 
-function Leaderboard({ leaderboard }: { leaderboard: { name: string, count: number }[] }) {
+function Leaderboard({ leaderboard }: { leaderboard: { email: string, count: number }[] }) {
     return (
         <Card className="overflow-hidden shadow-sm border border-gray-200">
             <CardHeader className="bg-white border-b border-gray-100">
@@ -136,7 +243,7 @@ function Leaderboard({ leaderboard }: { leaderboard: { name: string, count: numb
                             transition={{ delay: index * 0.05 }}
                             className="p-4 border-b last:border-b-0 hover:bg-gray-50 transition-colors duration-200"
                         >
-                            <span className="font-semibold text-blue-500">{index + 1}.</span> {entry.name} - {entry.count} question{entry.count !== 1 ? 's' : ''}
+                            <span className="font-semibold text-blue-500">{index + 1}.</span> {entry.email} - {entry.count} question{entry.count !== 1 ? 's' : ''}
                         </motion.div>
                     ))}
                 </ScrollArea>
@@ -158,16 +265,9 @@ function ActionBar({ questions }: { questions: Question[] }) {
 function aggregateLeaderboard(questions: Question[]) {
     const leaderboardMap: { [key: string]: number } = {}
     questions.forEach((question) => {
-        leaderboardMap[question.name] = (leaderboardMap[question.name] || 0) + 1
+        leaderboardMap[question.email] = (leaderboardMap[question.email] || 0) + 1
     })
     return Object.entries(leaderboardMap)
-        .map(([name, count]) => ({ name, count }))
+        .map(([email, count]) => ({ email, count }))
         .sort((a, b) => b.count - a.count)
-}
-
-type Question = {
-    id: string
-    name: string
-    text: string
-    createdAt: number
 }
